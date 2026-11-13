@@ -1,0 +1,14 @@
+{
+  "date": "2026-11-13",
+  "native_core_and_frontend_core_unchanged": true,
+  "core_files_checked": 86,
+  "checkpoint_sha256": "af0658f289ec840b292645f8d5538978f06e8cabaa1fd31e84acc91af268e990",
+  "cpu_checkpoint_load_verified": true,
+  "parameters": 17654857,
+  "python_entrypoint_syntax_verified": true,
+  "paper_backend_reverse_patch_applicability_verified": true,
+  "new_trajectory_experiments_run": false,
+  "native_build_check": "passed: stereo_inertial_euroc built from source with C++11 dependencies and AVX2 flags",
+  "docker_base_note": "Build verification uses frozen Ubuntu 22.04 dependency image, not a fresh network rebuild of ubuntu:22.04.",
+  "data_and_secret_scan": "no datasets, trajectories, outputs, SSH credentials or private keys included"
+}

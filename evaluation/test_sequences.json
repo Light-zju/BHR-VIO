@@ -1,0 +1,14 @@
+{
+  "euroc": [
+    "MH_02_easy",
+    "MH_03_medium",
+    "MH_05_difficult",
+    "V1_03_difficult",
+    "V2_03_difficult"
+  ],
+  "kitti": [
+    "05",
+    "07",
+    "10"
+  ]
+}

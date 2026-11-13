@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+build/
+lib/
+*.so
+*.a
+*.o
+runtime/built_image.json
+data/
+datasets/
+outputs/
+results/
+*.bag
+*.log

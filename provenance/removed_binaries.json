@@ -1,0 +1,14 @@
+[
+  "native/ORB_SLAM3/Examples/Monocular/mono_euroc",
+  "native/ORB_SLAM3/Examples/Monocular/mono_kitti",
+  "native/ORB_SLAM3/Examples/Monocular/mono_tum_vi",
+  "native/ORB_SLAM3/Examples/Monocular/mono_tum",
+  "native/ORB_SLAM3/Examples/RGB-D/rgbd_tum",
+  "native/ORB_SLAM3/Examples/Monocular-Inertial/mono_inertial_tum_vi",
+  "native/ORB_SLAM3/Examples/Monocular-Inertial/mono_inertial_euroc",
+  "native/ORB_SLAM3/Examples/Stereo-Inertial/stereo_inertial_tum_vi",
+  "native/ORB_SLAM3/Examples/Stereo-Inertial/stereo_inertial_euroc",
+  "native/ORB_SLAM3/Examples/Stereo/stereo_kitti",
+  "native/ORB_SLAM3/Examples/Stereo/stereo_euroc",
+  "native/ORB_SLAM3/Examples/Stereo/stereo_tum_vi"
+]

@@ -1,0 +1,6 @@
+{
+  "image": "vio-navigation:a61-refinement-split",
+  "image_id": "sha256:2f19402b749f2295fb391b1f573df24c1baa50a3350e735672ad53fed116ad97",
+  "lineage": "516dc51f (all ablation switches) -> 2f19402b (separate patch-refinement and photometric-acceptance switches; default path unchanged)",
+  "note": "Used for the refinement-split test; earlier arms were run on 516dc51f / f60747b8 / d28a72c9 and are not re-run."
+}

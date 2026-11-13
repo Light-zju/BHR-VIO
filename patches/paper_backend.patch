@@ -1,0 +1,697 @@
+--- a/include/A14TemporalProposals.h
++++ b/include/A14TemporalProposals.h
+@@ -1,55 +1,48 @@
+-#pragma once
+-#include <sys/socket.h>
+-#include <sys/un.h>
+-#include <unistd.h>
+-#include <cstdio>
+-#include <cstring>
+-#include <stdexcept>
+-#include <limits>
+-#include <cmath>
+-#include <vector>
+-#include "ORBextractor.h"
+-#include <opencv2/imgproc.hpp>
+-namespace ORB_SLAM3 { namespace a14 {
+-struct Proposal{double u=0,v=0,right=-1,seedRight=-1;bool valid=false,stereo=false;};
+-inline bool stereoAt(const Frame*b,int j,double u,double v,double seed,double&right){
+- if(std::getenv("VIO_ABLATION_RAW_STEREO_SEEDS")){
+-  if(j<0||j>=b->N||!std::isfinite(seed)||!std::isfinite(u)||!std::isfinite(v))return false;
+-  const auto&im=b->mpORBextractorLeft->mvImagePyramid[0];
+-  if(seed<0||seed>=im.cols||u<0||u>=im.cols||v<0||v>=im.rows||!(u-seed>0&&u-seed<b->fx))return false;
+-  right=seed;return true;
+- }
+-
+- if(!(seed>=0)||!(b->mA15StereoCostThreshold>0)||j<0||j>=b->N)return false;
+- const int level=b->mvKeysUn[j].octave,w=5,L=5;const float inv=b->mvInvScaleFactors[level],scale=b->mvScaleFactors[level];
+- const cv::Mat&li=b->mpORBextractorLeft->mvImagePyramid[level];const cv::Mat&ri=b->mpORBextractorRight->mvImagePyramid[level];
+- const double x=u*inv,y=v*inv,r0=seed*inv;
+- auto inside=[&](const cv::Mat&im,double px){return px>=w+1&&px<im.cols-w-1&&y>=w+1&&y<im.rows-w-1;};
+- if(!inside(li,x))return false;
+- cv::Mat left;cv::getRectSubPix(li,cv::Size(11,11),cv::Point2f(x,y),left,CV_32F);left-=left.at<float>(w,w);
+- float values[11],minimum=std::numeric_limits<float>::infinity();int best=-1;
+- for(int k=-L;k<=L;++k){float cost=std::numeric_limits<float>::infinity();if(inside(ri,r0+k)){cv::Mat rr;cv::getRectSubPix(ri,cv::Size(11,11),cv::Point2f(r0+k,y),rr,CV_32F);rr-=rr.at<float>(w,w);cost=float(cv::norm(left,rr,cv::NORM_L1));}values[k+L]=cost;if(cost<minimum){minimum=cost;best=k+L;}}
+- if(best<=0||best>=2*L||!(minimum<b->mA15StereoCostThreshold))return false;
+- double den=2.*(values[best-1]+values[best+1]-2*values[best]);if(!std::isfinite(den)||den<=0)return false;
+- double delta=(values[best-1]-values[best+1])/den;if(!std::isfinite(delta)||std::abs(delta)>1)return false;
+- right=scale*(r0+best-L+delta);double disparity=u-right;
+- return std::isfinite(right)&&right>=0&&disparity>0&&disparity<b->fx;
+-}
+-template<class Anchor> std::vector<Proposal> propose(const Anchor*a,const Frame*b,const std::vector<int>&matches){
+- std::vector<Proposal>out(matches.size());std::vector<int>ids;
+- for(size_t i=0;i<matches.size();++i)if(matches[i]>=0){out[i].u=b->mvKeysUn[matches[i]].pt.x;out[i].v=b->mvKeysUn[matches[i]].pt.y;ids.push_back(i);}
+- if(!std::getenv("VIO_A14_PROPOSE")||ids.empty())return out;
+- const char*path=std::getenv("VIO_RECTIFIED_STEREO_SOCKET");if(!path)throw std::runtime_error("A14 socket missing");
+- int fd=socket(AF_UNIX,SOCK_STREAM,0);if(fd<0)throw std::runtime_error("A14 socket create");
+- sockaddr_un addr{};addr.sun_family=AF_UNIX;if(strlen(path)>=sizeof(addr.sun_path)){close(fd);throw std::runtime_error("A14 socket path");}strcpy(addr.sun_path,path);
+- if(connect(fd,reinterpret_cast<sockaddr*>(&addr),sizeof(addr))<0){close(fd);throw std::runtime_error("A14 socket connect");}
+- FILE*f=fdopen(fd,"r+");if(!f){close(fd);throw std::runtime_error("A14 fdopen");}
+- fprintf(f,"T %.17g %.17g %zu\n",a->mTimeStamp,b->mTimeStamp,ids.size());
+- for(int i:ids){int j=matches[i];fprintf(f,"%d %d %.17g %.17g %.17g %.17g\n",i,j,double(a->mvKeysUn[i].pt.x),double(a->mvKeysUn[i].pt.y),double(b->mvKeysUn[j].pt.x),double(b->mvKeysUn[j].pt.y));}
+- fflush(f);size_t count=0;if(fscanf(f,"%zu",&count)!=1||count!=ids.size()){fclose(f);throw std::runtime_error("A14 proposal count");}
+- for(int i:ids){int valid=0;if(fscanf(f,"%lf %lf %d %lf",&out[i].u,&out[i].v,&valid,&out[i].seedRight)!=4||!std::isfinite(out[i].u)||!std::isfinite(out[i].v)){fclose(f);throw std::runtime_error("A14 proposal malformed");}out[i].valid=valid;}
+- fclose(f);
+- for(int i:ids){int j=matches[i];auto&v=out[i];if(!v.valid){v.right=b->mvuRight[j];v.stereo=v.right>=0;}else v.stereo=stereoAt(b,j,v.u,v.v,v.seedRight,v.right);if(!v.stereo)v.right=-1;}
+- return out;
+-}
+-}}
++#pragma once
++#include <sys/socket.h>
++#include <sys/un.h>
++#include <unistd.h>
++#include <cstdio>
++#include <cstring>
++#include <stdexcept>
++#include <limits>
++#include <cmath>
++#include <vector>
++#include "ORBextractor.h"
++#include <opencv2/imgproc.hpp>
++namespace ORB_SLAM3 { namespace a14 {
++struct Proposal{double u=0,v=0,right=-1,seedRight=-1;bool valid=false,stereo=false;};
++inline bool stereoAt(const Frame*b,int j,double u,double v,double seed,double&right){
++ if(!(seed>=0)||!(b->mA15StereoCostThreshold>0)||j<0||j>=b->N)return false;
++ const int level=b->mvKeysUn[j].octave,w=5,L=5;const float inv=b->mvInvScaleFactors[level],scale=b->mvScaleFactors[level];
++ const cv::Mat&li=b->mpORBextractorLeft->mvImagePyramid[level];const cv::Mat&ri=b->mpORBextractorRight->mvImagePyramid[level];
++ const double x=u*inv,y=v*inv,r0=seed*inv;
++ auto inside=[&](const cv::Mat&im,double px){return px>=w+1&&px<im.cols-w-1&&y>=w+1&&y<im.rows-w-1;};
++ if(!inside(li,x))return false;
++ cv::Mat left;cv::getRectSubPix(li,cv::Size(11,11),cv::Point2f(x,y),left,CV_32F);left-=left.at<float>(w,w);
++ float values[11],minimum=std::numeric_limits<float>::infinity();int best=-1;
++ for(int k=-L;k<=L;++k){float cost=std::numeric_limits<float>::infinity();if(inside(ri,r0+k)){cv::Mat rr;cv::getRectSubPix(ri,cv::Size(11,11),cv::Point2f(r0+k,y),rr,CV_32F);rr-=rr.at<float>(w,w);cost=float(cv::norm(left,rr,cv::NORM_L1));}values[k+L]=cost;if(cost<minimum){minimum=cost;best=k+L;}}
++ if(best<=0||best>=2*L||!(minimum<b->mA15StereoCostThreshold))return false;
++ double den=2.*(values[best-1]+values[best+1]-2*values[best]);if(!std::isfinite(den)||den<=0)return false;
++ double delta=(values[best-1]-values[best+1])/den;if(!std::isfinite(delta)||std::abs(delta)>1)return false;
++ right=scale*(r0+best-L+delta);double disparity=u-right;
++ return std::isfinite(right)&&right>=0&&disparity>0&&disparity<b->fx;
++}
++template<class Anchor> std::vector<Proposal> propose(const Anchor*a,const Frame*b,const std::vector<int>&matches){
++ std::vector<Proposal>out(matches.size());std::vector<int>ids;
++ for(size_t i=0;i<matches.size();++i)if(matches[i]>=0){out[i].u=b->mvKeysUn[matches[i]].pt.x;out[i].v=b->mvKeysUn[matches[i]].pt.y;ids.push_back(i);}
++ if(!std::getenv("VIO_A14_PROPOSE")||ids.empty())return out;
++ const char*path=std::getenv("VIO_RECTIFIED_STEREO_SOCKET");if(!path)throw std::runtime_error("A14 socket missing");
++ int fd=socket(AF_UNIX,SOCK_STREAM,0);if(fd<0)throw std::runtime_error("A14 socket create");
++ sockaddr_un addr{};addr.sun_family=AF_UNIX;if(strlen(path)>=sizeof(addr.sun_path)){close(fd);throw std::runtime_error("A14 socket path");}strcpy(addr.sun_path,path);
++ if(connect(fd,reinterpret_cast<sockaddr*>(&addr),sizeof(addr))<0){close(fd);throw std::runtime_error("A14 socket connect");}
++ FILE*f=fdopen(fd,"r+");if(!f){close(fd);throw std::runtime_error("A14 fdopen");}
++ fprintf(f,"T %.17g %.17g %zu\n",a->mTimeStamp,b->mTimeStamp,ids.size());
++ for(int i:ids){int j=matches[i];fprintf(f,"%d %d %.17g %.17g %.17g %.17g\n",i,j,double(a->mvKeysUn[i].pt.x),double(a->mvKeysUn[i].pt.y),double(b->mvKeysUn[j].pt.x),double(b->mvKeysUn[j].pt.y));}
++ fflush(f);size_t count=0;if(fscanf(f,"%zu",&count)!=1||count!=ids.size()){fclose(f);throw std::runtime_error("A14 proposal count");}
++ for(int i:ids){int valid=0;if(fscanf(f,"%lf %lf %d %lf",&out[i].u,&out[i].v,&valid,&out[i].seedRight)!=4||!std::isfinite(out[i].u)||!std::isfinite(out[i].v)){fclose(f);throw std::runtime_error("A14 proposal malformed");}out[i].valid=valid;}
++ fclose(f);
++ for(int i:ids){int j=matches[i];auto&v=out[i];if(!v.valid){v.right=b->mvuRight[j];v.stereo=v.right>=0;}else v.stereo=stereoAt(b,j,v.u,v.v,v.seedRight,v.right);if(!v.stereo)v.right=-1;}
++ return out;
++}
++}}
+--- a/include/A16ObservationLikelihood.h
++++ b/include/A16ObservationLikelihood.h
+@@ -1,66 +1,54 @@
+-#include <string>
+-#pragma once
+-#include "SourceStereoMixture.h"
+-#include <algorithm>
+-#include <array>
+-#include <fstream>
+-#include <mutex>
+-#include <iomanip>
+-#include <stdexcept>
+-// A replacement observation likelihood, not five independent measurements.
+-// Existing Gaussian-mixture and MaxSum operators are not a novelty claim.
+-namespace a16_map {
+-struct Stats {std::array<double,5> posterior{};double nll=0,constant=0;int winner=0;double invSigma=0,fx=0,fy=0,cx=0,cy=0;bool stereo=false,valid=false;};
+-inline source_stereo::Result evaluate(const Eigen::Vector3d&prediction,const Eigen::Vector3d&obs,const Eigen::Vector3d&alternative,bool alternateStereo,double invSigma,double fx,double fy,double cx,double cy,bool validGeometry=true,Stats*stats=nullptr){
+- const char*policyValue=std::getenv("VIO_ABLATION_SOURCE_POLICY");const bool frozenPolicy=policyValue&&std::string(policyValue)=="frozen";bool cachedSource=false;int cachedWinner=0;if(frozenPolicy&&stats){for(double q:stats->posterior)cachedSource=cachedSource||q!=0.;cachedWinner=stats->winner;}
+- if(stats){stats->invSigma=invSigma;stats->fx=fx;stats->fy=fy;stats->cx=cx;stats->cy=cy;stats->stereo=alternateStereo;stats->valid=validGeometry&&prediction.allFinite();}
+- source_stereo::Result out;out.residual.setZero();out.transform.setZero();out.classification=1e12;
+- if(!(invSigma>0)||!obs.allFinite()||!alternative.allFinite())throw std::runtime_error("A16 invalid observation");
+- const double s=std::sqrt(invSigma),bx=std::max(1.,fx),by=std::max(1.,fy),log2pi=std::log(2.*3.14159265358979323846);
+- auto clutter=[&](double x,double center,double width){return -std::log(width)-.5*log2pi-.5*std::pow((x-center)/width,2);};
+- // Missing alternative-right is integrated out: use an arbitrary common
+- // dummy coordinate with its same normalized clutter in every hypothesis.
+- Eigen::Vector3d alt=alternative;if(!alternateStereo)alt.z()=obs.z();
+- const double cnr=clutter(obs.z(),cx,bx),car=clutter(alt.z(),cx,bx);
+- const double cn=clutter(obs.x(),cx,bx)+clutter(obs.y(),cy,by)+cnr;
+- const double ca=clutter(alt.x(),cx,bx)+clutter(alt.y(),cy,by)+car;
+- const double norm2=2*std::log(s)-log2pi,norm3=3*std::log(s)-1.5*log2pi;
+- Eigen::Vector3d r[5];Eigen::Matrix3d J[5];double u[5],ll[5];
+- for(int i=0;i<5;++i){r[i].setZero();J[i].setZero();}
+- r[0]=s*(obs-prediction);J[0]=s*Eigen::Matrix3d::Identity();u[0]=std::log(.4)+norm3+ca;
+- r[1]=s*(alt-prediction);J[1]=s*Eigen::Matrix3d::Identity();u[1]=std::log(.4)+norm3+cn;
+- if(!alternateStereo){r[1].z()=0;J[1](2,2)=0;u[1]=std::log(.4)+norm2+car+cn;}
+- r[2].head<2>()=s*(obs-prediction).head<2>();J[2](0,0)=J[2](1,1)=s;u[2]=std::log(.05)+norm2+cnr+ca;
+- r[3].head<2>()=s*(alt-prediction).head<2>();J[3](0,0)=J[3](1,1)=s;u[3]=std::log(.05)+norm2+car+cn;
+- u[4]=std::log(.1)+cn+ca;
+- const double constant=std::max(0.,*std::max_element(u,u+5))+std::log(5.)+1.;
+- if(!validGeometry||!prediction.allFinite()){out.residual.w()=std::sqrt(2*(constant-u[4]));if(stats){if(!frozenPolicy){stats->posterior={0,0,0,0,1};stats->winner=4;}stats->nll=-u[4];stats->constant=constant;}return out;}
+- int best=0;for(int i=0;i<5;++i){ll[i]=u[i]-.5*r[i].squaredNorm();if(ll[i]>ll[best])best=i;}
+-
+- if(const char*policy=std::getenv("VIO_ABLATION_SOURCE_POLICY")){
+-  if(std::string(policy)!="max"&&!frozenPolicy)throw std::runtime_error("Unknown source ablation policy");if(frozenPolicy&&cachedSource){if(cachedWinner<0||cachedWinner>4)throw std::runtime_error("Invalid cached source");best=cachedWinner;}
+-  out.residual.head<3>()=r[best];out.residual.w()=std::sqrt(std::max(1e-16,2*(constant-u[best])));
+-  out.transform.topRows<3>()=J[best];out.transform.row(3).setZero();
+-  const bool bearing=best==2||best==3||(best==1&&!alternateStereo);
+-  out.classification=best==4?1e12:r[best].squaredNorm()*(bearing?7.815/5.991:1.);
+-  if(stats){stats->posterior.fill(0.);stats->posterior[best]=1.;stats->winner=best;stats->nll=-ll[best];stats->constant=constant;}
+-  return out;
+- }
+- double mass=0;for(int i=0;i<5;++i)mass+=std::exp(ll[i]-ll[best]);double lse=ll[best]+std::log(mass);Eigen::Vector3d g=Eigen::Vector3d::Zero();
+- for(int i=0;i<5;++i){double q=std::exp(ll[i]-lse);g+=q*J[i].transpose()*r[i];if(stats)stats->posterior[i]=q;}
+- out.residual.head<3>()=r[best];out.residual.w()=std::sqrt(std::max(1e-16,2*(constant-u[best]-(lse-ll[best]))));
+- out.transform.topRows<3>()=J[best];out.transform.row(3)=(g-J[best].transpose()*r[best]).transpose()/out.residual.w();
+- // Native outlier classification remains a physical selected-component
+- // chi-square, never the optimizer cost including an embedding constant.
+- const bool bearing=best==2||best==3||(best==1&&!alternateStereo);
+- out.classification=best==4?1e12:r[best].squaredNorm()*(bearing?7.815/5.991:1.);
+- if(stats){stats->winner=best;stats->nll=-lse;stats->constant=constant;}
+- return out;
+-}
+-inline void record(double time,unsigned long point,size_t feature,bool persistent,bool active,const Stats&stats,const Eigen::Vector3d&obs,const Eigen::Vector3d&alt,const Eigen::Vector3d&prediction,double classification,unsigned long graph){
+- const char*p=std::getenv("VIO_A16_SAMPLE_LOG");if(!p||point%20)return;
+- static std::mutex mutex;std::lock_guard<std::mutex>lock(mutex);std::ofstream f(p,std::ios::app);f<<std::setprecision(17)<<time<<","<<point<<","<<feature<<","<<persistent<<","<<active<<","<<stats.winner<<","<<stats.nll<<","<<classification;
+- for(double v:stats.posterior)f<<","<<v;for(int i=0;i<3;++i)f<<","<<obs[i];for(int i=0;i<3;++i)f<<","<<alt[i];for(int i=0;i<3;++i)f<<","<<prediction[i];f<<","<<stats.invSigma<<","<<stats.fx<<","<<stats.fy<<","<<stats.cx<<","<<stats.cy<<","<<stats.stereo<<","<<stats.valid<<","<<graph;f<<"\n";
+-}
+-
+-}
++#pragma once
++#include "SourceStereoMixture.h"
++#include <algorithm>
++#include <array>
++#include <fstream>
++#include <mutex>
++#include <iomanip>
++#include <stdexcept>
++// A replacement observation likelihood, not five independent measurements.
++// Existing Gaussian-mixture and MaxSum operators are not a novelty claim.
++namespace a16_map {
++struct Stats {std::array<double,5> posterior{};double nll=0,constant=0;int winner=0;double invSigma=0,fx=0,fy=0,cx=0,cy=0;bool stereo=false,valid=false;};
++inline source_stereo::Result evaluate(const Eigen::Vector3d&prediction,const Eigen::Vector3d&obs,const Eigen::Vector3d&alternative,bool alternateStereo,double invSigma,double fx,double fy,double cx,double cy,bool validGeometry=true,Stats*stats=nullptr){
++ if(stats){stats->invSigma=invSigma;stats->fx=fx;stats->fy=fy;stats->cx=cx;stats->cy=cy;stats->stereo=alternateStereo;stats->valid=validGeometry&&prediction.allFinite();}
++ source_stereo::Result out;out.residual.setZero();out.transform.setZero();out.classification=1e12;
++ if(!(invSigma>0)||!obs.allFinite()||!alternative.allFinite())throw std::runtime_error("A16 invalid observation");
++ const double s=std::sqrt(invSigma),bx=std::max(1.,fx),by=std::max(1.,fy),log2pi=std::log(2.*3.14159265358979323846);
++ auto clutter=[&](double x,double center,double width){return -std::log(width)-.5*log2pi-.5*std::pow((x-center)/width,2);};
++ // Missing alternative-right is integrated out: use an arbitrary common
++ // dummy coordinate with its same normalized clutter in every hypothesis.
++ Eigen::Vector3d alt=alternative;if(!alternateStereo)alt.z()=obs.z();
++ const double cnr=clutter(obs.z(),cx,bx),car=clutter(alt.z(),cx,bx);
++ const double cn=clutter(obs.x(),cx,bx)+clutter(obs.y(),cy,by)+cnr;
++ const double ca=clutter(alt.x(),cx,bx)+clutter(alt.y(),cy,by)+car;
++ const double norm2=2*std::log(s)-log2pi,norm3=3*std::log(s)-1.5*log2pi;
++ Eigen::Vector3d r[5];Eigen::Matrix3d J[5];double u[5],ll[5];
++ for(int i=0;i<5;++i){r[i].setZero();J[i].setZero();}
++ r[0]=s*(obs-prediction);J[0]=s*Eigen::Matrix3d::Identity();u[0]=std::log(.4)+norm3+ca;
++ r[1]=s*(alt-prediction);J[1]=s*Eigen::Matrix3d::Identity();u[1]=std::log(.4)+norm3+cn;
++ if(!alternateStereo){r[1].z()=0;J[1](2,2)=0;u[1]=std::log(.4)+norm2+car+cn;}
++ r[2].head<2>()=s*(obs-prediction).head<2>();J[2](0,0)=J[2](1,1)=s;u[2]=std::log(.05)+norm2+cnr+ca;
++ r[3].head<2>()=s*(alt-prediction).head<2>();J[3](0,0)=J[3](1,1)=s;u[3]=std::log(.05)+norm2+car+cn;
++ u[4]=std::log(.1)+cn+ca;
++ const double constant=std::max(0.,*std::max_element(u,u+5))+std::log(5.)+1.;
++ if(!validGeometry||!prediction.allFinite()){out.residual.w()=std::sqrt(2*(constant-u[4]));if(stats){stats->posterior={0,0,0,0,1};stats->nll=-u[4];stats->constant=constant;stats->winner=4;}return out;}
++ int best=0;for(int i=0;i<5;++i){ll[i]=u[i]-.5*r[i].squaredNorm();if(ll[i]>ll[best])best=i;}
++ double mass=0;for(int i=0;i<5;++i)mass+=std::exp(ll[i]-ll[best]);double lse=ll[best]+std::log(mass);Eigen::Vector3d g=Eigen::Vector3d::Zero();
++ for(int i=0;i<5;++i){double q=std::exp(ll[i]-lse);g+=q*J[i].transpose()*r[i];if(stats)stats->posterior[i]=q;}
++ out.residual.head<3>()=r[best];out.residual.w()=std::sqrt(std::max(1e-16,2*(constant-u[best]-(lse-ll[best]))));
++ out.transform.topRows<3>()=J[best];out.transform.row(3)=(g-J[best].transpose()*r[best]).transpose()/out.residual.w();
++ // Native outlier classification remains a physical selected-component
++ // chi-square, never the optimizer cost including an embedding constant.
++ const bool bearing=best==2||best==3||(best==1&&!alternateStereo);
++ out.classification=best==4?1e12:r[best].squaredNorm()*(bearing?7.815/5.991:1.);
++ if(stats){stats->winner=best;stats->nll=-lse;stats->constant=constant;}
++ return out;
++}
++inline void record(double time,unsigned long point,size_t feature,bool persistent,bool active,const Stats&stats,const Eigen::Vector3d&obs,const Eigen::Vector3d&alt,const Eigen::Vector3d&prediction,double classification,unsigned long graph){
++ const char*p=std::getenv("VIO_A16_SAMPLE_LOG");if(!p||point%20)return;
++ static std::mutex mutex;std::lock_guard<std::mutex>lock(mutex);std::ofstream f(p,std::ios::app);f<<std::setprecision(17)<<time<<","<<point<<","<<feature<<","<<persistent<<","<<active<<","<<stats.winner<<","<<stats.nll<<","<<classification;
++ for(double v:stats.posterior)f<<","<<v;for(int i=0;i<3;++i)f<<","<<obs[i];for(int i=0;i<3;++i)f<<","<<alt[i];for(int i=0;i<3;++i)f<<","<<prediction[i];f<<","<<stats.invSigma<<","<<stats.fx<<","<<stats.fy<<","<<stats.cx<<","<<stats.cy<<","<<stats.stereo<<","<<stats.valid<<","<<graph;f<<"\n";
++}
++
++}
+--- a/include/A61Direction.h
++++ b/include/A61Direction.h
+@@ -28,7 +28,7 @@
+  }
+  void computeError()override{bool ok;_error[0]=signedPixel(ok);}
+ };
+-inline std::pair<int,int> add(g2o::SparseOptimizer& opt,const std::vector<KeyFrame*>& kfs,bool insert=true,int* proposed=nullptr){
++inline std::pair<int,int> add(g2o::SparseOptimizer& opt,const std::vector<KeyFrame*>& kfs){
+  int eligible=0,inserted=0;
+  for(auto* b:kfs){
+    auto *a=b->mPrevKF;if(!a||a->isBad()||b->isBad()||a->mnId%2!=0||b->mnId%2!=1)continue;
+@@ -40,10 +40,9 @@
+      auto e=std::unique_ptr<Direction>(new Direction(h.second,k->second,a,b));e->setVertex(0,va);e->setVertex(1,vb);
+      bool ok;double err=e->signedPixel(ok);if(!ok || !std::isfinite(err)|| err*err>3.841459)continue;
+      auto *ker=new g2o::RobustKernelHuber;ker->setDelta(std::sqrt(3.841459));e->setRobustKernel(ker);
+-     if(proposed)++*proposed;if(!insert)continue;
+      if(!opt.addEdge(e.get()))throw std::runtime_error("A61 factor insertion failed");e.release();++inserted;
+    }
+  }
+  return {eligible,inserted};
+ }
+-}}
++}}
+--- a/src/Frame.cc
++++ b/src/Frame.cc
+@@ -989,23 +989,10 @@
+ 
+ 
+ void Frame::AttachLearnedStereo(){
+- const char*pr=std::getenv("VIO_ABLATION_PATCH_REFINEMENT");const bool patchRefinement=!pr||std::stoi(pr)!=0;
+- const char*pa=std::getenv("VIO_ABLATION_PHOTOMETRIC_ACCEPTANCE");const bool photoAcceptance=!pa||std::stoi(pa)!=0;
+  mvuRightAlternative.assign(N,-1.f);mvA1NNOrigin.assign(N,0);const auto a1NativeRight=mvuRight;const auto a1NativeDepth=mvDepth;mvA3NativeDepth=mvDepth;mvA3Consumed.assign(N,0);if(!std::getenv("VIO_RECTIFIED_STEREO_SOCKET")||N==0)return;
+  std::vector<cv::Point2f> query,seeds;for(const auto&k:mvKeys)query.push_back(k.pt);
+  bool ran=sourceRectifiedStereo(mTimeStamp,mpORBextractorLeft->mvImagePyramid[0],mpORBextractorRight->mvImagePyramid[0],query,seeds);
+  if(!ran||!std::getenv("VIO_MAP_CANDIDATES"))return;
+- if(std::getenv("VIO_ABLATION_RAW_STEREO_SEEDS")){
+-  int recovered=0,alternatives=0;
+-  for(int i=0;i<N;++i){float ur=seeds[i].x,disparity=mvKeys[i].pt.x-ur;
+-   if(!std::isfinite(ur)||ur<0||ur>=mpORBextractorRight->mvImagePyramid[0].cols||!(disparity>0&&disparity<mpCamera->getParameter(0)))continue;
+-   if(mvuRight[i]<0){mvA1NNOrigin[i]=1;mvuRight[i]=ur;mvDepth[i]=mbf/disparity;++recovered;}
+-   else if(std::abs(mvuRight[i]-ur)>1e-3){mvuRightAlternative[i]=ur;++alternatives;}
+-  }
+-  if(const char*p=std::getenv("VIO_ABLATION_RAW_STEREO_LOG")){std::ofstream f(p,std::ios::app);f<<std::setprecision(17)<<mTimeStamp<<","<<N<<","<<recovered<<","<<alternatives<<"\n";}
+-  return;
+- }
+-
+  struct Candidate {int index;float ur,cost;};std::vector<Candidate> proposals;std::vector<float> nativeCosts;
+  for(int i=0;i<N;++i){const auto&kp=mvKeys[i];int level=kp.octave;const cv::Mat&left=mpORBextractorLeft->mvImagePyramid[level];const cv::Mat&right=mpORBextractorRight->mvImagePyramid[level];float inv=mvInvScaleFactors[level],scale=mvScaleFactors[level];int u=cvRound(kp.pt.x*inv),v=cvRound(kp.pt.y*inv),seed=cvRound(seeds[i].x*inv);const int w=5,L=5;
+   if(u-w<0||u+w>=left.cols||v-w<0||v+w>=left.rows||v+w>=right.rows)continue;
+@@ -1013,11 +1000,11 @@
+   auto cost=[&](int r){if(r-w<0||r+w>=right.cols)return std::numeric_limits<float>::infinity();cv::Mat x;right.rowRange(v-w,v+w+1).colRange(r-w,r+w+1).convertTo(x,CV_32F);x-=x.at<float>(w,w);return float(cv::norm(l,x,cv::NORM_L1));};
+   if(mvuRight[i]>=0){float c=cost(cvRound(mvuRight[i]*inv));if(std::isfinite(c))nativeCosts.push_back(c);}
+   float values[11];int best=-1;float minimum=std::numeric_limits<float>::infinity();for(int j=-L;j<=L;++j){values[j+L]=cost(seed+j);if(values[j+L]<minimum){minimum=values[j+L];best=j+L;}}
+-  if(best<=0||best>=2*L)continue;float den=2*(values[best-1]+values[best+1]-2*values[best]);if(!std::isfinite(den)||den<=0)continue;float delta=(values[best-1]-values[best+1])/den;if(!std::isfinite(delta)||std::abs(delta)>1)continue;float ur=scale*(seed+best-L+delta);if(!patchRefinement){ur=seeds[i].x;minimum=cost(cvRound(seeds[i].x*inv));}float disparity=kp.pt.x-ur;float maxD=mpCamera->getParameter(0);
++  if(best<=0||best>=2*L)continue;float den=2*(values[best-1]+values[best+1]-2*values[best]);if(!std::isfinite(den)||den<=0)continue;float delta=(values[best-1]-values[best+1])/den;if(!std::isfinite(delta)||std::abs(delta)>1)continue;float ur=scale*(seed+best-L+delta),disparity=kp.pt.x-ur;float maxD=mpCamera->getParameter(0);
+   if(!(disparity>0&&disparity<maxD&&ur>=0))continue;proposals.push_back({i,ur,minimum});
+  }
+  std::vector<float> costs=nativeCosts;if(costs.empty())for(const auto&c:proposals)costs.push_back(c.cost);
+- if(costs.empty())return;std::sort(costs.begin(),costs.end());float threshold=photoAcceptance?2.1f*costs[costs.size()/2]:std::numeric_limits<float>::infinity();mA15StereoCostThreshold=threshold;int alternatives=0,recovered=0;
++ if(costs.empty())return;std::sort(costs.begin(),costs.end());float threshold=2.1f*costs[costs.size()/2];mA15StereoCostThreshold=threshold;int alternatives=0,recovered=0;
+  for(const auto&c:proposals)if(c.cost<threshold){if(mvuRight[c.index]<0){mvA1NNOrigin[c.index]=1;mvuRight[c.index]=c.ur;mvDepth[c.index]=mbf/(mvKeys[c.index].pt.x-c.ur);++recovered;}else if(std::abs(mvuRight[c.index]-c.ur)>1e-3){mvuRightAlternative[c.index]=c.ur;++alternatives;}}
+  if(const char*path=std::getenv("VIO_MAP_CANDIDATE_LOG")){std::ofstream f(path,std::ios::app);f<<std::setprecision(17)<<mTimeStamp<<","<<N<<","<<alternatives<<","<<recovered<<","<<threshold<<"\n";}
+  const int a1Potential=std::count(mvA1NNOrigin.begin(),mvA1NNOrigin.end(),1);
+--- a/src/KeyFrame.cc
++++ b/src/KeyFrame.cc
+@@ -224,7 +224,7 @@
+     for(map<KeyFrame*,int>::iterator mit=mConnectedKeyFrameWeights.begin(), mend=mConnectedKeyFrameWeights.end(); mit!=mend; mit++)
+        vPairs.push_back(make_pair(mit->second,mit->first));
+ 
+-    sort(vPairs.begin(),vPairs.end(),[](const std::pair<int,KeyFrame*>& a,const std::pair<int,KeyFrame*>& b){return a.first!=b.first?a.first<b.first:a.second->mnId<b.second->mnId;});
++    sort(vPairs.begin(),vPairs.end());
+     list<KeyFrame*> lKFs;
+     list<int> lWs;
+     for(size_t i=0, iend=vPairs.size(); i<iend;i++)
+@@ -445,7 +445,7 @@
+     {
+         if(!upParent)
+             cout << "  UPDATE_CONN: KF " << mit->first->mnId << " ; num matches: " << mit->second << endl;
+-        if(mit->second>nmax || (mit->second==nmax && (!pKFmax || mit->first->mnId<pKFmax->mnId)))
++        if(mit->second>nmax)
+         {
+             nmax=mit->second;
+             pKFmax=mit->first;
+@@ -463,7 +463,7 @@
+         pKFmax->AddConnection(this,nmax);
+     }
+ 
+-    sort(vPairs.begin(),vPairs.end(),[](const std::pair<int,KeyFrame*>& a,const std::pair<int,KeyFrame*>& b){return a.first!=b.first?a.first<b.first:a.second->mnId<b.second->mnId;});
++    sort(vPairs.begin(),vPairs.end());
+     list<KeyFrame*> lKFs;
+     list<int> lWs;
+     for(size_t i=0; i<vPairs.size();i++)
+@@ -653,7 +653,7 @@
+                         if(vpConnected[i]->mnId == (*spcit)->mnId)
+                         {
+                             int w = pKF->GetWeight(vpConnected[i]);
+-                            if(w>max || (w==max && (pKF->mnId<pC->mnId || (pKF->mnId==pC->mnId && vpConnected[i]->mnId<pP->mnId))))
++                            if(w>max)
+                             {
+                                 pC = pKF;
+                                 pP = vpConnected[i];
+--- a/src/Map.cc
++++ b/src/Map.cc
+@@ -147,13 +147,13 @@
+ vector<KeyFrame*> Map::GetAllKeyFrames()
+ {
+     unique_lock<mutex> lock(mMutexMap);
+-    auto result=vector<KeyFrame*>(mspKeyFrames.begin(),mspKeyFrames.end());std::sort(result.begin(),result.end(),[](KeyFrame*a,KeyFrame*b){return a->mnId<b->mnId;});return result;
++    return vector<KeyFrame*>(mspKeyFrames.begin(),mspKeyFrames.end());
+ }
+ 
+ vector<MapPoint*> Map::GetAllMapPoints()
+ {
+     unique_lock<mutex> lock(mMutexMap);
+-    auto result=vector<MapPoint*>(mspMapPoints.begin(),mspMapPoints.end());std::sort(result.begin(),result.end(),[](MapPoint*a,MapPoint*b){return a->mnId<b->mnId;});return result;
++    return vector<MapPoint*>(mspMapPoints.begin(),mspMapPoints.end());
+ }
+ 
+ long unsigned int Map::MapPointsInMap()
+--- a/src/MapPoint.cc
++++ b/src/MapPoint.cc
+@@ -1,4 +1,3 @@
+-#include <limits>
+ #include "A4Ownership.h"
+ /**
+ * This file is part of ORB-SLAM3
+@@ -35,9 +34,6 @@
+     mnCorrectedReference(0), mnBAGlobalForKF(0), mnVisible(1), mnFound(1), mbBad(false),
+     mpReplaced(static_cast<MapPoint*>(NULL))
+ {
+-    mTrackDepth=std::numeric_limits<float>::infinity();
+-    mTrackDepthR=std::numeric_limits<float>::infinity();
+-
+     mpReplaced = static_cast<MapPoint*>(NULL);
+ }
+ 
+@@ -48,12 +44,7 @@
+     mpReplaced(static_cast<MapPoint*>(NULL)), mfMinDistance(0), mfMaxDistance(0), mpMap(pMap),
+     mnOriginMapId(pMap->GetId())
+ {
+-    mTrackDepth=std::numeric_limits<float>::infinity();
+-    mTrackDepthR=std::numeric_limits<float>::infinity();
+-
+     SetWorldPos(Pos);
+-    mTrackDepth=(Pos-pRefKF->GetCameraCenter()).norm();
+-    mTrackDepthR=mTrackDepth;
+ 
+     mNormalVector.setZero();
+ 
+@@ -72,9 +63,6 @@
+     mpReplaced(static_cast<MapPoint*>(NULL)), mfMinDistance(0), mfMaxDistance(0), mpMap(pMap),
+     mnOriginMapId(pMap->GetId())
+ {
+-    mTrackDepth=std::numeric_limits<float>::infinity();
+-    mTrackDepthR=std::numeric_limits<float>::infinity();
+-
+     mInvDepth=invDepth;
+     mInitU=(double)uv_init.x;
+     mInitV=(double)uv_init.y;
+@@ -94,9 +82,6 @@
+     mnCorrectedReference(0), mnBAGlobalForKF(0), mpRefKF(static_cast<KeyFrame*>(NULL)), mnVisible(1),
+     mnFound(1), mbBad(false), mpReplaced(NULL), mpMap(pMap), mnOriginMapId(pMap->GetId())
+ {
+-    mTrackDepth=std::numeric_limits<float>::infinity();
+-    mTrackDepthR=std::numeric_limits<float>::infinity();
+-
+     SetWorldPos(Pos);
+ 
+     Eigen::Vector3f Ow;
+@@ -115,8 +100,6 @@
+ 
+     Eigen::Vector3f PC = mWorldPos - Ow;
+     const float dist = PC.norm();
+-    mTrackDepth=dist;
+-    mTrackDepthR=dist;
+     const int level = (pFrame -> Nleft == -1) ? pFrame->mvKeysUn[idxF].octave
+                                               : (idxF < pFrame -> Nleft) ? pFrame->mvKeys[idxF].octave
+                                                                          : pFrame -> mvKeysRight[idxF].octave;
+@@ -206,12 +189,8 @@
+ 
+             mObservations.erase(pKF);
+ 
+-            if(mpRefKF==pKF && !mObservations.empty()) {
+-                auto chosen=mObservations.begin();
+-                for(auto it=mObservations.begin();it!=mObservations.end();++it)
+-                    if(it->first->mnId<chosen->first->mnId)chosen=it;
+-                mpRefKF=chosen->first;
+-            }
++            if(mpRefKF==pKF)
++                mpRefKF=mObservations.begin()->first;
+ 
+             // If only 2 observations or less, discard point
+             if(nObs<=2)
+@@ -368,9 +347,7 @@
+ 
+     vDescriptors.reserve(observations.size());
+ 
+-    std::vector<std::pair<KeyFrame*,std::tuple<int,int>>> stableObservations(observations.begin(),observations.end());
+-    std::sort(stableObservations.begin(),stableObservations.end(),[](const std::pair<KeyFrame*,std::tuple<int,int>>& a,const std::pair<KeyFrame*,std::tuple<int,int>>& b){return a.first->mnId<b.first->mnId;});
+-    for(auto mit=stableObservations.begin(), mend=stableObservations.end(); mit!=mend; ++mit)
++    for(map<KeyFrame*,tuple<int,int>>::iterator mit=observations.begin(), mend=observations.end(); mit!=mend; mit++)
+     {
+         KeyFrame* pKF = mit->first;
+ 
+@@ -469,9 +446,7 @@
+     Eigen::Vector3f normal;
+     normal.setZero();
+     int n=0;
+-    std::vector<std::pair<KeyFrame*,std::tuple<int,int>>> orderedNormals(observations.begin(),observations.end());
+-    std::sort(orderedNormals.begin(),orderedNormals.end(),[](const std::pair<KeyFrame*,std::tuple<int,int>>& a,const std::pair<KeyFrame*,std::tuple<int,int>>& b){return a.first->mnId<b.first->mnId;});
+-    for(auto mit=orderedNormals.begin(), mend=orderedNormals.end(); mit!=mend; ++mit)
++    for(map<KeyFrame*,tuple<int,int>>::iterator mit=observations.begin(), mend=observations.end(); mit!=mend; mit++)
+     {
+         KeyFrame* pKF = mit->first;
+ 
+--- a/src/Optimizer.cc
++++ b/src/Optimizer.cc
+@@ -54,12 +54,6 @@
+ #include "A21JointGraph.h"
+ namespace ORB_SLAM3
+ {
+-static std::vector<std::pair<KeyFrame*,std::tuple<int,int>>> stableGraphObservations(const std::map<KeyFrame*,std::tuple<int,int>>& source){
+- std::vector<std::pair<KeyFrame*,std::tuple<int,int>>> out(source.begin(),source.end());
+- std::sort(out.begin(),out.end(),[](const std::pair<KeyFrame*,std::tuple<int,int>>& a,const std::pair<KeyFrame*,std::tuple<int,int>>& b){return a.first->mnId<b.first->mnId;});
+- return out;
+-}
+-
+ bool sortByVal(const pair<MapPoint*, int> &a, const pair<MapPoint*, int> &b)
+ {
+     return (a.second < b.second);
+@@ -162,11 +156,11 @@
+         vPoint->setMarginalized(true);
+         optimizer.addVertex(vPoint);
+ 
+-       const auto observations = stableGraphObservations(pMP->GetObservations());
++       const map<KeyFrame*,tuple<int,int>> observations = pMP->GetObservations();
+ 
+         int nEdges = 0;
+         //SET EDGES
+-        for(auto mit=observations.begin(); mit!=observations.end(); mit++)
++        for(map<KeyFrame*,tuple<int,int>>::const_iterator mit=observations.begin(); mit!=observations.end(); mit++)
+         {
+             KeyFrame* pKF = mit->first;
+             if(pKF->isBad() || pKF->mnId>maxKFid)
+@@ -629,13 +623,13 @@
+         vPoint->setMarginalized(true);
+         optimizer.addVertex(vPoint);
+ 
+-        const auto observations = stableGraphObservations(pMP->GetObservations());
++        const map<KeyFrame*,tuple<int,int>> observations = pMP->GetObservations();
+ 
+ 
+         bool bAllFixed = true;
+ 
+         //Set edges
+-        for(auto mit=observations.begin(), mend=observations.end(); mit!=mend; mit++)
++        for(map<KeyFrame*,tuple<int,int>>::const_iterator mit=observations.begin(), mend=observations.end(); mit!=mend; mit++)
+         {
+             KeyFrame* pKFi = mit->first;
+ 
+@@ -1203,8 +1197,8 @@
+     list<KeyFrame*> lFixedCameras;
+     for(list<MapPoint*>::iterator lit=lLocalMapPoints.begin(), lend=lLocalMapPoints.end(); lit!=lend; lit++)
+     {
+-        const auto observations = stableGraphObservations((*lit)->GetObservations());
+-        for(auto mit=observations.begin(), mend=observations.end(); mit!=mend; mit++)
++        map<KeyFrame*,tuple<int,int>> observations = (*lit)->GetObservations();
++        for(map<KeyFrame*,tuple<int,int>>::iterator mit=observations.begin(), mend=observations.end(); mit!=mend; mit++)
+         {
+             KeyFrame* pKFi = mit->first;
+ 
+@@ -1330,10 +1324,10 @@
+         optimizer.addVertex(vPoint);
+         nPoints++;
+ 
+-        const auto observations = stableGraphObservations(pMP->GetObservations());
++        const map<KeyFrame*,tuple<int,int>> observations = pMP->GetObservations();
+ 
+         //Set edges
+-        for(auto mit=observations.begin(), mend=observations.end(); mit!=mend; mit++)
++        for(map<KeyFrame*,tuple<int,int>>::const_iterator mit=observations.begin(), mend=observations.end(); mit!=mend; mit++)
+         {
+             KeyFrame* pKFi = mit->first;
+ 
+@@ -1450,27 +1444,8 @@
+         if(*pbStopFlag)
+             return;
+ 
+-    auto audit_graph=[&](const char*phase){
+-      if(pKF->mnId<12){if(const char*root=std::getenv("VIO_REPEAT_GRAPH_DIR")){
+-        std::string base=std::string(root)+"/kf_"+std::to_string(pKF->mnId)+"_"+phase;
+-        std::ofstream f(base+".state");f<<std::setprecision(17);
+-        for(auto& item:optimizer.vertices()){auto*v=dynamic_cast<g2o::OptimizableGraph::Vertex*>(item.second);f<<"V "<<v->id()<<" "<<v->fixed()<<" ";v->write(f);f<<"\n";}
+-        for(auto* edge:optimizer.activeEdges()){
+-          f<<"E "<<edge->internalId();for(auto*v:edge->vertices())f<<" "<<v->id();
+-          if(auto*e=dynamic_cast<a18::PointEdge*>(edge)){
+-            f<<" S "<<e->measurement().transpose()<<" "<<e->a16Observation.transpose()<<" "<<e->a16Active<<" "<<e->a16Registered<<" "<<e->a16Stereo<<" "<<e->sourceInvSigma<<" "<<e->fx<<" "<<e->fy<<" "<<e->cx<<" "<<e->cy<<" "<<e->bf;
+-            for(int i=0;i<4;++i)for(int j=0;j<4;++j)f<<" "<<e->information()(i,j);
+-          }else{f<<" N ";edge->write(f);}
+-          f<<"\n";
+-        }
+-        std::ofstream order(base+".order");order<<std::setprecision(17);
+-        for(auto*e:optimizer.activeEdges()){order<<e->internalId();for(auto*v:e->vertices())order<<","<<v->id();order<<"\n";}
+-      }}
+-    };
+     optimizer.initializeOptimization();
+-    audit_graph("before");
+     optimizer.optimize(10);
+-    audit_graph("after");
+ 
+     vector<pair<KeyFrame*,MapPoint*> > vToErase;
+     vToErase.reserve(vpEdgesMono.size()+vpEdgesBody.size()+vpEdgesStereo.size());
+@@ -2443,19 +2418,15 @@
+ }
+ 
+ 
+-namespace a61_ablation {
+-inline int history(){static const int mode=[](){const char*p=std::getenv("VIO_ABLATION_HISTORY");int v=p?std::stoi(p):2;if(v<0||v>2)throw std::runtime_error("history mode");return v;}();return mode;}
+-inline bool geometry(){static const bool enabled=[](){const char*p=std::getenv("VIO_ABLATION_GEOMETRY");int v=p?std::stoi(p):1;if(v<0||v>1)throw std::runtime_error("geometry mode");return v==1;}();return enabled;}
+-}
+ class A56RelativeYaw : public g2o::BaseMultiEdge<1,double> {
+ public:
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+- Eigen::Matrix3d first,second,jac; Eigen::Vector3d bias; bool biasAware=true; A56RelativeYaw(){resize(3);}
++ Eigen::Matrix3d first,second,jac; Eigen::Vector3d bias; A56RelativeYaw(){resize(3);}
+  void computeError(){
+     auto *a=static_cast<const VertexPose*>(_vertices[0]);auto *b=static_cast<const VertexPose*>(_vertices[1]);
+     Eigen::AngleAxisd ra(a->estimate().Rwb*first.transpose()),rb(b->estimate().Rwb*second.transpose());
+     auto *g=static_cast<const VertexGyroBias*>(_vertices[2]);
+-    double biasChange=biasAware?(second*jac*(g->estimate()-bias)).z():0.;
++    double biasChange=(second*jac*(g->estimate()-bias)).z();
+     _error[0]=rb.angle()*rb.axis().z()-ra.angle()*ra.axis().z()-biasChange;
+  }
+  bool read(std::istream&) override{return false;}
+@@ -2565,8 +2536,8 @@
+ 
+     for(list<MapPoint*>::iterator lit=lLocalMapPoints.begin(), lend=lLocalMapPoints.end(); lit!=lend; lit++)
+     {
+-        const auto observations = stableGraphObservations((*lit)->GetObservations());
+-        for(auto mit=observations.begin(), mend=observations.end(); mit!=mend; mit++)
++        map<KeyFrame*,tuple<int,int>> observations = (*lit)->GetObservations();
++        for(map<KeyFrame*,tuple<int,int>>::iterator mit=observations.begin(), mend=observations.end(); mit!=mend; mit++)
+         {
+             KeyFrame* pKFi = mit->first;
+ 
+@@ -2613,8 +2584,7 @@
+     const bool a32Complete=std::getenv("VIO_A32_COMPLETE_SUPPORT")!=nullptr;
+     assert(!a32Complete || a22Active);
+     std::set<MapPoint*> a32Original(lLocalMapPoints.begin(),lLocalMapPoints.end());
+-    auto stablePointId=[](MapPoint*a,MapPoint*b){return a->mnId<b->mnId;};
+-    std::set<MapPoint*,decltype(stablePointId)> a32Missing(stablePointId);
++    std::set<MapPoint*> a32Missing;
+     std::set<KeyFrame*> a32PoseSupport(lFixedKeyFrames.begin(),lFixedKeyFrames.end());
+     a32PoseSupport.insert(vpOptimizableKFs.begin(),vpOptimizableKFs.end());
+     a32PoseSupport.insert(lpOptVisKFs.begin(),lpOptVisKFs.end());
+@@ -2871,10 +2841,10 @@
+         vPoint->setId(id);
+         vPoint->setMarginalized(true);
+         optimizer.addVertex(vPoint);
+-        const auto observations = stableGraphObservations(pMP->GetObservations());
++        const map<KeyFrame*,tuple<int,int>> observations = pMP->GetObservations();
+ 
+         // Create visual constraints
+-        for(auto mit=observations.begin(), mend=observations.end(); mit!=mend; mit++)
++        for(map<KeyFrame*,tuple<int,int>>::const_iterator mit=observations.begin(), mend=observations.end(); mit!=mend; mit++)
+         {
+             KeyFrame* pKFi = mit->first;
+ 
+@@ -3014,7 +2984,7 @@
+     static thread_local unsigned long mapKey=std::numeric_limits<unsigned long>::max();
+     if(mapKey!=pKF->GetMap()->GetId()){commits.clear();mapKey=pKF->GetMap()->GetId();}
+     std::map<Pair,std::pair<VertexPose*,VertexPose*>> active;
+-    size_t constrained=0,historyProposed=0;double carry=0.;
++    size_t constrained=0;double carry=0.;
+     for(auto *k:vpOptimizableKFs){
+       auto *h=k->mPrevKF;
+       if(!h||!k->bImu||!h->bImu||!k->mpImuPreintegrated||h->isBad())continue;
+@@ -3032,12 +3002,10 @@
+       carry+=std::abs((edge->second*edge->jac*(gyro->estimate()-edge->bias)).z());
+       edge->setVertex(0,a);edge->setVertex(1,b);edge->setVertex(2,gyro);edge->setMeasurement(0.);
+       Eigen::Matrix<double,1,1> precision;precision(0,0)=1./variance;edge->setInformation(precision);
+-      ++historyProposed;edge->biasAware=a61_ablation::history()==2;
+-      if(a61_ablation::history()!=0){optimizer.addEdge(edge);++constrained;}else delete edge;
+-    }
+-
+-    int directionProposed=0;auto cnt=a61::add(optimizer,vpOptimizableKFs,a61_ablation::geometry(),&directionProposed);{std::ostringstream o;o<<std::setprecision(17)<<pKF->mTimeStamp<<","<<pKF->mnId<<","<<cnt.first<<","<<cnt.second<<"\n";a3_seed::log("VIO_A61_LOG",o.str());}
+-    {std::ostringstream o;o<<std::setprecision(17)<<pKF->mTimeStamp<<","<<pKF->mnId<<","<<a61_ablation::geometry()<<","<<a61_ablation::history()<<","<<historyProposed<<","<<constrained<<","<<carry<<","<<cnt.first<<","<<directionProposed<<","<<cnt.second<<"\n";a3_seed::log("VIO_COMPONENT_ABLATION_LOG",o.str());}
++      optimizer.addEdge(edge);++constrained;
++    }
++
++    auto cnt=a61::add(optimizer,vpOptimizableKFs);{std::ostringstream o;o<<std::setprecision(17)<<pKF->mTimeStamp<<","<<pKF->mnId<<","<<cnt.first<<","<<cnt.second<<"\n";a3_seed::log("VIO_A61_LOG",o.str());}
+     optimizer.initializeOptimization();
+     optimizer.computeActiveErrors();
+     float err = optimizer.activeRobustChi2();
+@@ -3903,10 +3871,10 @@
+         optimizer.addVertex(vPoint);
+ 
+ 
+-        const auto observations = stableGraphObservations(pMPi->GetObservations());
++        const map<KeyFrame*,tuple<int,int>> observations = pMPi->GetObservations();
+         int nEdges = 0;
+         //SET EDGES
+-        for(auto mit=observations.begin(); mit!=observations.end(); mit++)
++        for(map<KeyFrame*,tuple<int,int>>::const_iterator mit=observations.begin(); mit!=observations.end(); mit++)
+         {
+             KeyFrame* pKF = mit->first;
+             if(pKF->isBad() || pKF->mnId>maxKFid || pKF->mnBALocalForMerge != pMainKF->mnId || !pKF->GetMapPoint(get<0>(mit->second)))
+@@ -4105,8 +4073,8 @@
+         if(pMPi->isBad())
+             continue;
+ 
+-        const auto observations = stableGraphObservations(pMPi->GetObservations());
+-        for(auto mit=observations.begin(); mit!=observations.end(); mit++)
++        const map<KeyFrame*,tuple<int,int>> observations = pMPi->GetObservations();
++        for(map<KeyFrame*,tuple<int,int>>::const_iterator mit=observations.begin(); mit!=observations.end(); mit++)
+         {
+             KeyFrame* pKF = mit->first;
+             if(pKF->isBad() || pKF->mnId>maxKFid || pKF->mnBALocalForKF != pMainKF->mnId || !pKF->GetMapPoint(get<0>(mit->second)))
+@@ -4335,10 +4303,10 @@
+     int i=0;
+     for(vector<pair<MapPoint*,int>>::iterator lit=pairs.begin(), lend=pairs.end(); lit!=lend; lit++, i++)
+     {
+-        const auto observations = stableGraphObservations(lit->first->GetObservations());
++        map<KeyFrame*,tuple<int,int>> observations = lit->first->GetObservations();
+         if(i>=maxCovKF)
+             break;
+-        for(auto mit=observations.begin(), mend=observations.end(); mit!=mend; mit++)
++        for(map<KeyFrame*,tuple<int,int>>::iterator mit=observations.begin(), mend=observations.end(); mit!=mend; mit++)
+         {
+             KeyFrame* pKFi = mit->first;
+ 
+@@ -4561,10 +4529,10 @@
+         vPoint->setMarginalized(true);
+         optimizer.addVertex(vPoint);
+ 
+-        const auto observations = stableGraphObservations(pMP->GetObservations());
++        const map<KeyFrame*,tuple<int,int>> observations = pMP->GetObservations();
+ 
+         // Create visual constraints
+-        for(auto mit=observations.begin(), mend=observations.end(); mit!=mend; mit++)
++        for(map<KeyFrame*,tuple<int,int>>::const_iterator mit=observations.begin(), mend=observations.end(); mit!=mend; mit++)
+         {
+             KeyFrame* pKFi = mit->first;
+ 
+--- a/src/Tracking.cc
++++ b/src/Tracking.cc
+@@ -3450,9 +3450,7 @@
+     mvpLocalKeyFrames.reserve(3*keyframeCounter.size());
+ 
+     // All keyframes that observe a map point are included in the local map. Also check which keyframe shares most points
+-    std::vector<std::pair<KeyFrame*,int>> orderedCounter(keyframeCounter.begin(),keyframeCounter.end());
+-    std::sort(orderedCounter.begin(),orderedCounter.end(),[](const std::pair<KeyFrame*,int>& a,const std::pair<KeyFrame*,int>& b){return a.first->mnId<b.first->mnId;});
+-    for(auto it=orderedCounter.begin(), itEnd=orderedCounter.end(); it!=itEnd; ++it)
++    for(map<KeyFrame*,int>::const_iterator it=keyframeCounter.begin(), itEnd=keyframeCounter.end(); it!=itEnd; it++)
+     {
+         KeyFrame* pKF = it->first;
+ 
+@@ -3496,9 +3494,7 @@
+         }
+ 
+         const set<KeyFrame*> spChilds = pKF->GetChilds();
+-        std::vector<KeyFrame*> orderedChildren(spChilds.begin(),spChilds.end());
+-        std::sort(orderedChildren.begin(),orderedChildren.end(),[](KeyFrame*a,KeyFrame*b){return a->mnId<b->mnId;});
+-        for(auto sit=orderedChildren.begin(), send=orderedChildren.end(); sit!=send; ++sit)
++        for(set<KeyFrame*>::const_iterator sit=spChilds.begin(), send=spChilds.end(); sit!=send; sit++)
+         {
+             KeyFrame* pChildKF = *sit;
+             if(!pChildKF->isBad())
